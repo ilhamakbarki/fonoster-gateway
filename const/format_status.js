@@ -1,0 +1,41 @@
+const FORMAT_TEXT = 'text/plain';
+const FORMAT_IMAGE = 'image/jpeg';
+const FORMAT_VIDEO = 'video/mp4';
+const FORMAT_VOICE = 'audio/ogg';
+const FORMAT_VOICE_AUDIO = 'audio';
+const FORMAT_VOICE_OPUS = 'audio/ogg; codecs=opus';
+
+const FORMAT_STATUS = [FORMAT_TEXT, FORMAT_IMAGE, FORMAT_VIDEO, FORMAT_VOICE, FORMAT_VOICE_AUDIO, FORMAT_VOICE_OPUS];
+const MEDIA_FORMAT_STATUS = FORMAT_STATUS.filter(format => format !== FORMAT_TEXT);
+const FORMAT_STATUS_TO_ENDPOINT = {
+    [FORMAT_TEXT]: 'text',
+    [FORMAT_IMAGE]: 'image',
+    [FORMAT_VIDEO]: 'video',
+    [FORMAT_VOICE]: 'voice',
+    [FORMAT_VOICE_AUDIO]: 'voice',
+    [FORMAT_VOICE_OPUS]: 'voice',
+};
+
+const VALID_FONT = ["SYSTEM", "SYSTEM_TEXT", "FB_SCRIPT", "SYSTEM_BOLD", "MORNINGBREEZE_REGULAR", "CALISTOGA_REGULAR"];
+const FONT_TO_SIZE = {
+    "SYSTEM": 1,
+    "SYSTEM_TEXT": 2,
+    "FB_SCRIPT": 3,
+    "SYSTEM_BOLD": 4,
+    "MORNINGBREEZE_REGULAR": 5,
+    "CALISTOGA_REGULAR": 6
+};
+
+module.exports = {
+    FORMAT_TEXT,
+    FORMAT_IMAGE,
+    FORMAT_VIDEO,
+    FORMAT_VOICE,
+    FORMAT_VOICE_AUDIO,
+    FORMAT_VOICE_OPUS,
+    FORMAT_STATUS,
+    MEDIA_FORMAT_STATUS,
+    FORMAT_STATUS_TO_ENDPOINT,
+    VALID_FONT,
+    FONT_TO_SIZE,
+}

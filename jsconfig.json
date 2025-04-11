@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@library/*": ["library/*"],
+      "@utils/*": ["utils/*"],
+      "@models/*": ["models/*"],
+      "@config": ["config/config"],
+      "@driver/*": ["driver/*"],
+      "@middlewares/*": ["middlewares/*"],
+      "@services/*": ["services/*"],
+      "@handler/*": ["handler/*"],
+      "@const/*": ["const/*"]
+    }
+  }
+}

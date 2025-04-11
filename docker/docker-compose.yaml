@@ -1,0 +1,10 @@
+services:
+  svc_fonoster_gateway:
+    restart: always
+    container_name: svc_fonoster_gateway
+    image: ilhamakbarki/svc_fonoster_gateway
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file:
+      - .env
