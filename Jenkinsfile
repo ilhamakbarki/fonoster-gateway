@@ -13,6 +13,7 @@ pipeline {
         APPROVAL = credentials("APPROVAL_RELEASE")
         AWS_SCRIPT = credentials("AWS_AUTO_START_SCRIPT")
         CONFIG_PROD_AWS = credentials("FONOSTER_API_PROD_AWS_CONFIG")
+        NOTIF_API_KEY = credentials('NOTIF_API_KEY')
     }
     stages {
         stage('Build & Push Image Staging & Remove Image') {
@@ -106,4 +107,36 @@ pipeline {
             }
         }
     }
+
+    post {
+        success {
+            echo 'Deploy Success...'
+            script {
+                sendNotification("Success to deploy")
+            }
+        }
+        failure {
+            echo 'Deploy Failed.'
+            script {
+                sendNotification("Failed to deploy")
+            }
+        }
+    }
+}
+
+def sendNotification(message) {
+    echo 'Sending Notification...'
+    def tag = env.TAG_NAME ?: ''
+    def branch = env.BRANCH_NAME ?: ''
+    sh """
+        curl --location 'https://webhooks.socialbot.dev/webhook/jenkins-deploy' \\
+            --header 'Content-Type: application/json' \\
+            --header 'x-api-key: ${NOTIF_API_KEY}' \\
+            --data '{
+                "message": "${message}",
+                "service": "${DOCKER_IMAGE}",
+                "branch": "${branch}",
+                "tag": "${tag}"
+            }'
+    """
 }
