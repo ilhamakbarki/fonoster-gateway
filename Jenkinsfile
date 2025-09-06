@@ -1,38 +1,32 @@
 pipeline {
-    triggers {
-        pollSCM('H/5 * * * *')
+    agent {
+        kubernetes {
+          label 'kube-1'
+        }
     }
-    agent { label (env.BRANCH_NAME == 'staging_beta' ? 'agent-staging' : 'agent-production') }
     environment {
         REGISTRY_HOST = credentials("DOCKER_REGISTRY_HOST")
-        REGISTRY_USER = "DOCKER_REGISTRY_USER"
-        STAGING_HOST = credentials('HOST_STAGING')
-        STAGING_USER = "USER_SERVER_STAGING"
         DOCKER_IMAGE = "svc_fonoster_gateway"
-        COMPOSE_FILE = "/home/ubuntu/apps/fonoster/docker-compose.yaml"
         APPROVAL = credentials("APPROVAL_RELEASE")
-        AWS_SCRIPT = credentials("AWS_AUTO_START_SCRIPT")
-        CONFIG_PROD_AWS = credentials("FONOSTER_API_PROD_AWS_CONFIG")
         NOTIF_API_KEY = credentials('NOTIF_API_KEY')
     }
     stages {
-        stage('Build & Push Image Staging & Remove Image') {
+        stage('Build & Push Image Staging & Deploy on Staging') {
             when { branch 'staging_beta' }
             steps {
                 script{
                     echo 'Start Build Image Staging'
-                    sh 'docker build -t ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest -f docker/Dockerfile .'
+                    sh "docker build -t ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest -f docker/Dockerfile ."
 
                     echo 'Start Pushing Image'
-                    docker.withRegistry('https://${REGISTRY_HOST}', REGISTRY_USER) {
-                        sh 'docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest'
-                        sh 'docker tag ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER}'
-                        sh 'docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER}'
+                    docker.withRegistry("https://${REGISTRY_HOST}", 'DOCKER_REGISTRY_USER') {
+                        sh "docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest"
+                        sh "docker tag ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER}"
+                        sh "docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER}"
                     }
 
-                    echo "Removing image after push"
-                    sh "docker rmi -f ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-latest"
-                    sh "docker rmi -f ${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER}"
+                    echo 'Start Deploy on Staging'
+                    sh "kubectl set image deployment fonoster-app fonoster-app=${REGISTRY_HOST}/${DOCKER_IMAGE}:${BRANCH_NAME}-${BUILD_NUMBER} -n=fonostergateway-staging"
                 }
             }
         }
@@ -52,57 +46,22 @@ pipeline {
                 }
             }
         }
-        stage('Build & Push Image Production & Remove Image') {
+        stage('Build & Push Image Production & Deploy on Production') {
             when { tag "release-*" }
             steps {
                 script{
                     echo 'Start Build Image Production'
-                    sh 'docker build -t ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest -f docker/Dockerfile .'
+                    sh "docker build -t ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest -f docker/Dockerfile ."
 
                     echo 'Start Pushing Image'
-                    docker.withRegistry('https://${REGISTRY_HOST}', REGISTRY_USER) {
-                        sh 'docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest'
-                        sh 'docker tag ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest ${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER}'
-                        sh 'docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER}'
+                    docker.withRegistry("https://${REGISTRY_HOST}", 'DOCKER_REGISTRY_USER') {
+                        sh "docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest"
+                        sh "docker tag ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest ${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER}"
+                        sh "docker push ${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER}"
                     }
 
-                    echo "Removing image after push"
-                    sh "docker rmi -f ${REGISTRY_HOST}/${DOCKER_IMAGE}:release-latest"
-                    sh "docker rmi -f ${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER}"
-                }
-            }
-        }
-        stage('Clean Up Docker Images & Cache') {
-            steps {
-                script {
-                    echo "Cleaning up Docker images and build cache"
-                    sh "docker image prune -f"
-                    sh "docker builder prune -f"
-                    echo "Clean up completed!"
-                }
-            }
-        }
-        stage('Deploy on Staging') {
-            when { branch 'staging_beta' }
-            steps {
-                echo 'Start Deploy on Staging'
-                script {
-                    sshagent(credentials: [STAGING_USER]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ubuntu@${STAGING_HOST} ' 
-                            docker compose -f ${COMPOSE_FILE} pull ${DOCKER_IMAGE} &&
-                            docker compose -f ${COMPOSE_FILE} up -d ${DOCKER_IMAGE}'
-                        """
-                    }
-                }
-            }
-        }
-        stage('Deploy on Production') {
-            when { tag "release-*" }
-            steps {
-                echo 'Starting Deploy on Production'
-                script {
-                    sh '${AWS_SCRIPT} ${CONFIG_PROD_AWS}'
+                    echo 'Start Deploy on Production'
+                    sh "kubectl set image deployment fonoster-app fonoster-app=${REGISTRY_HOST}/${DOCKER_IMAGE}:${TAG_NAME}-${BUILD_NUMBER} -n=fonostergateway-production"
                 }
             }
         }
@@ -128,12 +87,16 @@ def sendNotification(message) {
     echo 'Sending Notification...'
     def tag = env.TAG_NAME ?: ''
     def branch = env.BRANCH_NAME ?: ''
+    def NAME = env.TAG_NAME ?: env.BRANCH_NAME
+    def cleanJobPath = env.JOB_NAME.replaceFirst('^/job', '').replaceAll('/$', '')
+    def formattedJobPath = cleanJobPath.split('/').collect { "job/${it}" }.join('/')
+    def link = "${env.PUBLIC_JENKINS_URL}${formattedJobPath}/${env.BUILD_NUMBER}/console"
     sh """
         curl --location 'https://webhooks.socialbot.dev/webhook/jenkins-deploy' \\
             --header 'Content-Type: application/json' \\
             --header 'x-api-key: ${NOTIF_API_KEY}' \\
             --data '{
-                "message": "${message}",
+                "message": "${message} Link : ${link}",
                 "service": "${DOCKER_IMAGE}",
                 "branch": "${branch}",
                 "tag": "${tag}"
